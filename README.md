@@ -23,6 +23,11 @@ Both run the same operational rules. They differ only in where records live.
 | Audit trail, ledger, reconciliation | — | yes |
 | Seeded demo data | no, starts empty | yes, a full season |
 
+Every list exports to Excel or PDF, and **History** collects events whose
+date has passed — grouped by year, with gate totals, average fill and the
+best-attended night, and a full record per event. An export carries what is
+on screen, filter included, and says so in its own subtitle.
+
 The hosted edition is the one to open on a phone in a concourse or to hand
 someone to try. It says so on screen — the dashboard states plainly that
 records are kept in that browser alone, because mistaking it for a shared

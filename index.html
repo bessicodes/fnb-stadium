@@ -472,6 +472,24 @@
   .srcList { font-size: 11px; color: var(--muted); line-height: 1.6; }
   .srcList a { color: var(--info); }
 
+  /* ------------- export ------------- */
+
+  .expBar { display: inline-flex; align-items: center; gap: 6px; }
+  .expLabel {
+    font-family: var(--mono); font-size: 8.5px; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted-2);
+  }
+  .expBar .btn svg { width: 12px; height: 12px; flex: none; }
+
+  .yearHead {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 2px 0 9px;
+  }
+  .yearNum { font-size: 19px; font-weight: 800; letter-spacing: -0.03em; }
+  .yearMeta { color: var(--muted); font-size: 11.5px; }
+
+  .detailGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+
   /* ------------- responsive ------------- */
 
   @media (max-width: 900px) {
@@ -799,6 +817,7 @@
   let editing = null;
   let search = '';
   let assist = { busy: false, text: '', question: '' };
+  let lastList = 'events';
   let toastTimer = null;
   const subs = [];
 
@@ -1244,6 +1263,300 @@
   }
 
   /* ==================================================================
+   * Export.
+   *
+   * The two libraries are fetched the first time somebody exports and
+   * never again, so a visitor who only reads the screen downloads
+   * neither. cdnjs first, jsDelivr if that is unreachable; if both fail
+   * the screen says so rather than handing over an empty file.
+   *
+   * What exports is what is on screen — the current search filter
+   * applies — so every file states how many of how many records it
+   * holds. A filtered export that cannot say it was filtered is a
+   * document someone will later mistake for the whole list.
+   * ================================================================ */
+
+  const CDN = {
+    exceljs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+      'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+    ],
+    jspdf: [
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+      'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+    ],
+    autotable: [
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js',
+      'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js',
+    ],
+  };
+
+  const scripts = new Map();
+
+  function fetchScript(url) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = () => resolve();
+      s.onerror = () => { s.remove(); reject(new Error('blocked')); };
+      document.head.append(s);
+    });
+  }
+
+  function loadScript(urls) {
+    const key = urls[0];
+    if (!scripts.has(key)) {
+      scripts.set(key, (async () => {
+        let last = null;
+        for (const url of urls) {
+          try { await fetchScript(url); return; } catch (e) { last = e; }
+        }
+        scripts.delete(key);
+        throw last || new Error('blocked');
+      })());
+    }
+    return scripts.get(key);
+  }
+
+  /* Columns priced in rand, so the spreadsheet formats them as money
+   * rather than as a bare number someone has to interpret. */
+  const MONEY = new Set(['cost', 'price']);
+
+  /** Every field a section defines, in form order. Deliberately fuller
+   *  than the screen's columns, which are a summary; an export is the
+   *  record, so it carries what the summary leaves out. */
+  function exportColumns(sec) {
+    return SCHEMA[sec].fields.map((f) => ({ key: f.k, label: f.label, field: f, sec }));
+  }
+
+  function exportValue(col, r) {
+    if (col.get) return col.get(r);
+    const f = col.field;
+    const v = r[f.k];
+    if (v == null || v === '') return '';
+    if (f.type === 'checks') {
+      const held = new Set(v);
+      return (f.options || []).filter(([val]) => held.has(val)).map(([, label]) => label).join(', ');
+    }
+    if (f.type === 'select') return optLabel(col.sec, f.k, v);
+    if (f.type === 'number') return Number(v);
+    return String(v);
+  }
+
+  const isNumeric = (col) => col.numeric || (col.field && col.field.type === 'number');
+
+  function stamp() {
+    return new Intl.DateTimeFormat('en-ZA', { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+  }
+
+  function fileName(title, ext) {
+    const slug = (venueById.get(venue).name + ' ' + title)
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return slug + '-' + new Date().toISOString().slice(0, 10) + '.' + ext;
+  }
+
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function widest(col, rows) {
+    let n = col.label.length;
+    for (const r of rows) {
+      const len = String(exportValue(col, r) ?? '').length;
+      if (len > n) n = len;
+    }
+    return n;
+  }
+
+  async function toExcel({ title, subtitle, columns, rows }) {
+    await loadScript(CDN.exceljs);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'FNB Stadium Admin';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet(title.slice(0, 31).replace(/[\\/*?:[\]]/g, ' '), {
+      views: [{ state: 'frozen', ySplit: 4 }],
+      pageSetup: {
+        orientation: columns.length > 6 ? 'landscape' : 'portrait',
+        fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      },
+    });
+
+    ws.mergeCells(1, 1, 1, columns.length);
+    const titleCell = ws.getCell(1, 1);
+    titleCell.value = title;
+    titleCell.font = { size: 15, bold: true, color: { argb: 'FFE01B22' } };
+    ws.getRow(1).height = 23;
+
+    ws.mergeCells(2, 1, 2, columns.length);
+    const subCell = ws.getCell(2, 1);
+    subCell.value = subtitle;
+    subCell.font = { size: 10, italic: true, color: { argb: 'FF5D626B' } };
+
+    const header = ws.getRow(4);
+    columns.forEach((c, i) => {
+      const cell = header.getCell(i + 1);
+      cell.value = c.label;
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16171A' } };
+      cell.alignment = { vertical: 'middle', wrapText: true };
+    });
+    header.height = 20;
+
+    rows.forEach((r, ri) => {
+      const row = ws.getRow(5 + ri);
+      columns.forEach((c, i) => {
+        const cell = row.getCell(i + 1);
+        const value = exportValue(c, r);
+        cell.value = value === '' ? null : value;
+        if (typeof value === 'number') {
+          cell.numFmt = MONEY.has(c.key) ? '"R"#,##0.00' : '#,##0';
+          cell.alignment = { horizontal: 'right' };
+        }
+        // Banding, so a wide row stays readable across the sheet.
+        if (ri % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F7F9' } };
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E5EA' } } };
+      });
+    });
+
+    columns.forEach((c, i) => {
+      ws.getColumn(i + 1).width = Math.min(46, Math.max(11, widest(c, rows) + 2));
+    });
+
+    if (rows.length) {
+      ws.autoFilter = {
+        from: { row: 4, column: 1 },
+        to: { row: 4 + rows.length, column: columns.length },
+      };
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    download(
+      new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      fileName(title, 'xlsx'),
+    );
+  }
+
+  async function toPdf({ title, subtitle, columns, rows }) {
+    await loadScript(CDN.jspdf);
+    await loadScript(CDN.autotable);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: columns.length > 6 ? 'landscape' : 'portrait',
+      unit: 'pt', format: 'a4',
+    });
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+
+    const align = {};
+    columns.forEach((c, i) => { if (isNumeric(c)) align[i] = { halign: 'right' }; });
+
+    doc.autoTable({
+      head: [columns.map((c) => c.label)],
+      body: rows.map((r) => columns.map((c) => {
+        const value = exportValue(c, r);
+        if (typeof value !== 'number') return value;
+        return MONEY.has(c.key) ? rand(value) : numFmt(value);
+      })),
+      startY: 98,
+      margin: { top: 98, left: 34, right: 34, bottom: 44 },
+      styles: {
+        font: 'helvetica', fontSize: 8, cellPadding: 4,
+        overflow: 'linebreak', lineColor: [226, 229, 234], lineWidth: 0.5,
+        textColor: [27, 27, 29],
+      },
+      headStyles: { fillColor: [22, 23, 26], textColor: [255, 255, 255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [246, 247, 249] },
+      columnStyles: align,
+      didDrawPage: () => {
+        // The brand bar, redrawn on every page so a loose sheet still
+        // says where it came from.
+        doc.setFillColor(22, 23, 26);
+        doc.rect(0, 0, W, 56, 'F');
+        doc.setFillColor(224, 27, 34);
+        doc.roundedRect(34, 19, 24, 17, 3, 3, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('SMSA', 66, 33);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(190, 194, 202);
+        doc.text('FNB STADIUM ADMIN', 110, 33);
+
+        doc.setTextColor(27, 27, 29);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text(title, 34, 80);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(93, 98, 107);
+        doc.text(subtitle, 34, 92);
+      },
+    });
+
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(131, 137, 149);
+      doc.text(stamp(), 34, H - 24);
+      doc.text('Page ' + i + ' of ' + pages, W - 34, H - 24, { align: 'right' });
+    }
+
+    doc.save(fileName(title, 'pdf'));
+  }
+
+  function sheetIcon() {
+    return svgEl('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+      svgEl('rect', { x: 2.2, y: 2.2, width: 11.6, height: 11.6, rx: 1.4, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 }),
+      svgEl('path', { d: 'M2.2 6.4h11.6M6.4 6.4v7.4', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 }));
+  }
+
+  function pdfIcon() {
+    return svgEl('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+      svgEl('path', { d: 'M4 1.8h5l3.2 3.2v9.2H4z', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linejoin': 'round' }),
+      svgEl('path', { d: 'M9 1.8V5h3.2', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linejoin': 'round' }),
+      svgEl('path', { d: 'M6 11.4h4', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round' }));
+  }
+
+  /**
+   * The export control.
+   *
+   * `spec` is a function, not a value: it is called at the moment of the
+   * click so the file reflects the filter in force then, not the one in
+   * force when the button was drawn.
+   */
+  function exportBar(spec) {
+    const run = async (fn, label) => {
+      const detail = spec();
+      if (!detail.rows.length) { toast('Nothing to export here yet.'); return; }
+      toast('Building the ' + label + '\u2026');
+      try {
+        await fn(detail);
+        toast(label + ' downloaded');
+      } catch (e) {
+        toast(e && e.message === 'blocked'
+          ? 'Could not load the export library \u2014 check the connection and try again.'
+          : 'Export failed (' + ((e && e.message) || 'unknown') + ').');
+      }
+    };
+
+    return el('div', { class: 'expBar' },
+      el('span', { class: 'expLabel' }, 'Export'),
+      el('button', { class: 'btn sm', onclick: () => run(toExcel, 'Excel file') }, sheetIcon(), 'Excel'),
+      el('button', { class: 'btn sm', onclick: () => run(toPdf, 'PDF') }, pdfIcon(), 'PDF'));
+  }
+
+  /* ==================================================================
    * Views
    * ================================================================ */
 
@@ -1526,6 +1839,277 @@
       v.notes ? el('div', { class: 'notice info', style: 'margin-top:13px' }, v.notes) : null);
   }
 
+  /* ---------- history ---------- */
+
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const yearOf = (e) => String(e.date || '').slice(0, 4) || '\u2014';
+
+  /** An event is history once its date has passed, or once it has been
+   *  closed or reconciled — a cancelled-and-settled fixture belongs in
+   *  the record even if its date has not arrived. */
+  function pastEvents() {
+    const now = todayISO();
+    return forVenue('events')
+      .filter((e) => e.date && (e.date < now || e.status === 'closed' || e.status === 'reconciled'))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  }
+
+  function dayName(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat('en-ZA', { weekday: 'long' }).format(d);
+  }
+
+  /** Gates-to-end running time. Events that finish after midnight are
+   *  common here, so a negative span wraps rather than reading as a
+   *  nonsense negative duration. */
+  function runningTime(e) {
+    if (!e.start || !e.ends) return null;
+    const parts = [e.start, e.ends].map((s) => s.split(':').map(Number));
+    if (parts.some(([h, m]) => Number.isNaN(h) || Number.isNaN(m))) return null;
+    let mins = (parts[1][0] * 60 + parts[1][1]) - (parts[0][0] * 60 + parts[0][1]);
+    if (mins < 0) mins += 24 * 60;
+    return Math.floor(mins / 60) + 'h ' + String(mins % 60).padStart(2, '0') + 'm';
+  }
+
+  const fillPct = (e, cap) => (e.attendance && cap ? Math.round((Number(e.attendance) / cap) * 100) : null);
+
+  function historyColumns() {
+    const cap = venueById.get(venue).capacity;
+    return [
+      { key: 'year', label: 'Year', get: (e) => yearOf(e) },
+      { key: 'name', label: 'Event', get: (e) => e.name || '' },
+      { key: 'code', label: 'Reference', get: (e) => e.code || '' },
+      { key: 'kind', label: 'Type', get: (e) => optLabel('events', 'kind', e.kind) },
+      { key: 'date', label: 'Date', get: (e) => e.date || '' },
+      { key: 'day', label: 'Day', get: (e) => dayName(e.date) },
+      { key: 'doors', label: 'Gates open', get: (e) => e.doors || '' },
+      { key: 'start', label: 'Start', get: (e) => e.start || '' },
+      { key: 'ends', label: 'Ends', get: (e) => e.ends || '' },
+      { key: 'running', label: 'Running time', get: (e) => runningTime(e) || '' },
+      { key: 'attendance', label: 'Attendance', numeric: true, get: (e) => (e.attendance ? Number(e.attendance) : '') },
+      { key: 'fill', label: '% of capacity', numeric: true, get: (e) => fillPct(e, cap) ?? '' },
+      { key: 'status', label: 'Stage', get: (e) => optLabel('events', 'status', e.status) },
+      { key: 'notes', label: 'Notes', get: (e) => e.notes || '' },
+    ];
+  }
+
+  function historySpec(rows, all) {
+    const v = venueById.get(venue);
+    return {
+      title: 'Event history',
+      subtitle: v.name + ' \u00b7 ' + (rows.length === all.length
+        ? rows.length + ' events'
+        : rows.length + ' of ' + all.length + ' events, filtered by \u201c' + search.trim() + '\u201d')
+        + ' \u00b7 generated ' + stamp(),
+      columns: historyColumns(),
+      rows,
+    };
+  }
+
+  function historyView() {
+    const v = venueById.get(venue);
+    const all = pastEvents();
+    const term = search.trim().toLowerCase();
+    const rows = term
+      ? all.filter((e) => [e.name, e.code, e.kind, yearOf(e), e.date].join(' ').toLowerCase().includes(term))
+      : all;
+
+    const out = [
+      head('Records \u00b7 ' + v.name, 'Event history',
+        'Every event that has already run, with its gate figures and what it filled. Search by name, reference, type or year; open one for the full record.',
+        all.length ? exportBar(() => historySpec(rows, all)) : null),
+    ];
+
+    if (all.length === 0) {
+      out.push(el('div', { class: 'empty' },
+        el('div', { class: 'emptyTitle' }, 'No past events on record'),
+        el('div', { class: 'emptyBody' },
+          'Events move here on their own once their date has passed, or as soon as you mark one closed or reconciled. '
+          + 'To bring previous seasons in, add them under Events with their real dates \u2014 they will land here, grouped by year, with the totals worked out.'),
+        el('button', { class: 'btn primary', onclick: () => go('events') }, 'Go to events')));
+      return out;
+    }
+
+    const withGate = all.filter((e) => Number(e.attendance) > 0);
+    const totalGate = withGate.reduce((s, e) => s + Number(e.attendance), 0);
+    const meanFill = withGate.length
+      ? Math.round(withGate.reduce((s, e) => s + (Number(e.attendance) / v.capacity) * 100, 0) / withGate.length)
+      : null;
+    const biggest = withGate.slice().sort((a, b) => Number(b.attendance) - Number(a.attendance))[0];
+    const years = [...new Set(all.map(yearOf))].sort().reverse();
+
+    out.push(el('div', { class: 'tiles' },
+      tile('Events run', all.length, years.length + (years.length === 1 ? ' year' : ' years') + ' on record'),
+      tile('Total attendance', totalGate ? numFmt(totalGate) : '\u2014',
+        withGate.length ? 'across ' + withGate.length + ' events with gate figures' : 'no gate figures entered'),
+      tile('Average fill', meanFill != null ? meanFill + '%' : '\u2014',
+        meanFill != null ? 'of ' + numFmt(v.capacity) + ' seats' : 'needs attendance figures',
+        meanFill == null ? null : meanFill >= 80 ? 'good' : meanFill >= 50 ? 'warn' : 'crit'),
+      tile('Best attended', biggest ? numFmt(biggest.attendance) : '\u2014',
+        biggest ? biggest.name + ' \u00b7 ' + fmtDate(biggest.date) : 'no gate figures entered')));
+
+    // Attendance by year — one bar per year, each directly labelled.
+    const byYear = new Map();
+    for (const e of all) {
+      const y = yearOf(e);
+      const agg = byYear.get(y) || { year: y, events: [], gate: 0 };
+      agg.events.push(e);
+      agg.gate += Number(e.attendance) || 0;
+      byYear.set(y, agg);
+    }
+    const yearRows = years.map((y) => byYear.get(y));
+
+    if (totalGate > 0) {
+      out.push(el('div', { class: 'sectionTitle' }, 'Attendance by year'));
+      out.push(el('div', { class: 'panel' }, el('div', { class: 'panelBody' },
+        barChart(yearRows.map((a) => ({
+          label: a.year,
+          sub: a.events.length + (a.events.length === 1 ? ' event' : ' events'),
+          value: a.gate,
+          display: numFmt(a.gate),
+        }))))));
+    }
+
+    out.push(el('div', { class: 'sectionTitle' }, 'By year'));
+    out.push(el('div', { class: 'venueGrid' }, yearRows.map((a) => {
+      const gated = a.events.filter((e) => Number(e.attendance) > 0);
+      const avg = gated.length ? Math.round(a.gate / gated.length) : null;
+      return el('div', { class: 'venueCard' },
+        el('div', { class: 'venueStripe' }),
+        el('div', { class: 'venueBody' },
+          el('div', { class: 'venueName' }, a.year),
+          el('div', { class: 'venueMeta' }, a.events.length + (a.events.length === 1 ? ' event' : ' events')),
+          el('div', { class: 'venueCapLabel', style: 'margin-top:9px' }, 'Total attendance'),
+          el('div', { class: 'venueCap' }, a.gate ? numFmt(a.gate) : '\u2014'),
+          el('div', { class: 'venueMeta', style: 'margin-top:6px' },
+            !gated.length ? 'no gate figures'
+              : gated.length > 1 ? 'average ' + numFmt(avg) + ' an event'
+              : gated[0].name)));
+    })));
+
+    out.push(el('div', { class: 'sectionTitle' }, 'Every event'));
+    out.push(el('div', { class: 'toolbar' },
+      el('input', {
+        class: 'search', type: 'search', id: 'search-history',
+        placeholder: 'Search by name, reference, type or year\u2026', value: search,
+        oninput: (e) => { search = e.target.value; paint(); },
+      }),
+      el('span', { class: 'count' },
+        rows.length === all.length ? all.length + ' events' : rows.length + ' of ' + all.length)));
+
+    const body = rows.length === 0
+      ? el('tr', null, el('td', { colspan: 7 },
+          el('div', { class: 'muted', style: 'padding:20px;text-align:center' }, 'Nothing matches \u201c' + search + '\u201d.')))
+      : rows.map((e) => {
+          const pct = fillPct(e, v.capacity);
+          return el('tr', null,
+            el('td', null, el('span', { class: 'code strong' }, yearOf(e))),
+            el('td', null, twoLine(e.name, e.code)),
+            el('td', null, el('span', null, fmtDate(e.date),
+              el('div', { class: 'tiny muted code' }, [dayName(e.date), e.start].filter(Boolean).join(' \u00b7 ')))),
+            el('td', null, tiny(optLabel('events', 'kind', e.kind))),
+            el('td', { class: 'num' }, e.attendance ? numFmt(e.attendance) : dash()),
+            el('td', { class: 'num' }, pct != null ? pct + '%' : dash()),
+            el('td', { class: 'tight' }, pill(EVENT_TONE[e.status] || 'neutral', optLabel('events', 'status', e.status))),
+            el('td', { class: 'tight' },
+              el('div', { class: 'rowBtns' },
+                el('button', { class: 'btn sm', onclick: () => go('event:' + e.id) }, 'Open'))));
+        });
+
+    out.push(el('div', { class: 'panel' },
+      el('div', { class: 'tw' },
+        el('table', null,
+          el('thead', null, el('tr', null,
+            ['Year', 'Event', 'Date', 'Type'].map((h) => el('th', null, h)),
+            el('th', { class: 'num' }, 'Attendance'),
+            el('th', { class: 'num' }, 'Filled'),
+            el('th', null, 'Stage'),
+            el('th', null, ''))),
+          el('tbody', null, body)))));
+
+    return out;
+  }
+
+  /* ---------- one event ---------- */
+
+  function eventSpec(e) {
+    const v = venueById.get(venue);
+    const cols = historyColumns();
+    return {
+      title: e.name || 'Event',
+      subtitle: v.name + ' \u00b7 ' + fmtDate(e.date) + ' \u00b7 generated ' + stamp(),
+      // Transposed: one record reads as field-and-value down the page,
+      // not as a single row running off the side of it.
+      columns: [
+        { key: 'field', label: 'Field', get: (r) => r.label },
+        { key: 'value', label: 'Value', get: (r) => r.value },
+      ],
+      rows: cols
+        .map((c) => ({ label: c.label, value: c.get(e) }))
+        .filter((r) => r.value !== '' && r.value != null),
+    };
+  }
+
+  function eventView(id) {
+    const v = venueById.get(venue);
+    const e = store.events.find((x) => x.id === id);
+
+    if (!e) {
+      return [head('Event', 'Not on record',
+        'That event has been deleted, or it belongs to a different venue.',
+        el('button', { class: 'btn primary', onclick: () => go('history') }, 'Back to history'))];
+    }
+
+    const pct = fillPct(e, v.capacity);
+    const run = runningTime(e);
+    const past = e.date && e.date < todayISO();
+
+    const rows = [
+      ['Event', e.name],
+      e.code ? ['Reference', e.code] : null,
+      ['Type', optLabel('events', 'kind', e.kind)],
+      ['Venue', v.name + ' \u00b7 ' + v.suburb],
+      ['Date', fmtDate(e.date) + (dayName(e.date) ? ' (' + dayName(e.date) + ')' : '')],
+      e.doors ? ['Gates open', e.doors] : null,
+      e.start ? ['Start', e.start] : null,
+      e.ends ? ['Ends', e.ends] : null,
+      run ? ['Running time', run] : null,
+      e.attendance ? ['Attendance', numFmt(e.attendance)] : null,
+      pct != null ? ['Share of capacity', pct + '% of ' + numFmt(v.capacity) + ' seats'] : null,
+      ['Stage', optLabel('events', 'status', e.status)],
+    ].filter(Boolean);
+
+    return [
+      head(past ? 'Event history \u00b7 ' + yearOf(e) : 'Event \u00b7 ' + yearOf(e), e.name || 'Event',
+        [optLabel('events', 'kind', e.kind), fmtDate(e.date), v.name].filter(Boolean).join(' \u00b7 '),
+        [
+          exportBar(() => eventSpec(e)),
+          el('button', { class: 'btn ghost', onclick: () => go(past ? 'history' : 'events') }, 'Back'),
+          el('button', { class: 'btn primary', onclick: () => { view = 'events'; openForm('events', e); } }, 'Edit'),
+        ]),
+
+      el('div', { class: 'tiles' },
+        tile('Attendance', e.attendance ? numFmt(e.attendance) : '\u2014',
+          e.attendance ? 'through the gates' : 'not recorded'),
+        tile('Share of capacity', pct != null ? pct + '%' : '\u2014',
+          pct != null ? 'of ' + numFmt(v.capacity) + ' seats' : 'needs an attendance figure',
+          pct == null ? null : pct >= 80 ? 'good' : pct >= 50 ? 'warn' : 'crit'),
+        tile('Running time', run || '\u2014', run ? e.start + ' to ' + e.ends : 'needs a start and an end'),
+        tile('Stage', optLabel('events', 'status', e.status), past ? 'event has run' : 'still ahead')),
+
+      el('div', { class: 'sectionTitle' }, 'The record'),
+      el('div', { class: 'panel' }, el('div', { class: 'panelBody' },
+        el('dl', { class: 'dl' }, rows.map(([k, val]) => [el('dt', null, k), el('dd', null, val)])))),
+
+      e.notes
+        ? [el('div', { class: 'sectionTitle' }, 'Notes'),
+           el('div', { class: 'panel' }, el('div', { class: 'panelBody' },
+             el('div', { style: 'white-space:pre-wrap;font-size:12.5px' }, e.notes)))]
+        : null,
+    ];
+  }
+
   /* ---------- records ---------- */
 
   function recordsView(sec) {
@@ -1566,7 +2150,16 @@
           placeholder: 'Search ' + def.title.toLowerCase() + '…', value: search,
           oninput: (e) => { search = e.target.value; paint(); },
         }),
-        el('span', { class: 'count' }, rows.length === all.length ? all.length + ' records' : rows.length + ' of ' + all.length)));
+        el('span', { class: 'count' }, rows.length === all.length ? all.length + ' records' : rows.length + ' of ' + all.length),
+        exportBar(() => ({
+          title: def.title,
+          subtitle: v.name + ' \u00b7 ' + (rows.length === all.length
+            ? rows.length + ' ' + def.title.toLowerCase()
+            : rows.length + ' of ' + all.length + ', filtered by \u201c' + search.trim() + '\u201d')
+            + ' \u00b7 generated ' + stamp(),
+          columns: exportColumns(sec),
+          rows,
+        }))));
 
       const header = el('tr', null,
         def.columns.map((c) => el('th', { class: c.class === 'num' ? 'num' : null }, c.label)),
@@ -1579,6 +2172,9 @@
             def.columns.map((c) => el('td', { class: c.class || null }, c.render(r))),
             el('td', { class: 'tight' },
               el('div', { class: 'rowBtns' },
+                sec === 'events'
+                  ? el('button', { class: 'btn sm', onclick: () => go('event:' + r.id) }, 'Open')
+                  : null,
                 el('button', { class: 'btn sm', onclick: () => openForm(sec, r) }, 'Edit')))));
 
       out.push(el('div', { class: 'panel' },
@@ -1697,6 +2293,7 @@
    * ================================================================ */
 
   function go(next) {
+    if (next === 'history' || next === 'events') lastList = next;
     view = next;
     editing = null;
     search = '';
@@ -1736,14 +2333,19 @@
   function renderNav() {
     document.getElementById('navTop').replaceChildren(
       navBtn('dashboard', 'Dashboard'),
-      navBtn('venues', 'Venue'));
+      navBtn('venues', 'Venue'),
+      navBtn('history', 'History', pastEvents().length || null));
 
     document.getElementById('navRecords').replaceChildren(
       ...SECTIONS.map((s) => navBtn(s, SCHEMA[s].title, forVenue(s).length || null)));
   }
 
   function navBtn(key, label, count) {
-    return el('button', { class: 'railBtn', 'aria-current': view === key, onclick: () => go(key) },
+    const onEvent = view.startsWith('event:');
+    const current = view === key
+      || (onEvent && key === 'history' && lastList === 'history')
+      || (onEvent && key === 'events' && lastList === 'events');
+    return el('button', { class: 'railBtn', 'aria-current': current, onclick: () => go(key) },
       el('span', null, label),
       count ? el('span', { class: 'n' }, count) : null);
   }
@@ -1757,6 +2359,8 @@
 
     const content = view === 'dashboard' ? dashboard()
       : view === 'venues' ? venuesView()
+      : view === 'history' ? historyView()
+      : view.startsWith('event:') ? eventView(view.slice(6))
       : recordsView(view);
 
     main.replaceChildren(...content.flat(5).filter(Boolean));
