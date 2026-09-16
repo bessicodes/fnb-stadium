@@ -1,0 +1,23 @@
+node_modules
+.next
+out
+build
+next-env.d.ts
+
+# Local operational database — rebuilt from seed with `npm run db:reset`.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+
+.env
+.env.local
+.env*.local
+
+.DS_Store
+*.log
+npm-debug.log*
+.vscode
+.idea
+tsconfig.tsbuildinfo
