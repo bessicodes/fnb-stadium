@@ -23,6 +23,15 @@ Both run the same operational rules. They differ only in where records live.
 | Audit trail, ledger, reconciliation | — | yes |
 | Seeded demo data | no, starts empty | yes, a full season |
 
+**Seat map** draws Level 1 from SMSA's own general-seating sticker
+schedule: blocks 101-150, 32 624 seats, 1 815 rows, every block sheet
+reconciling exactly with its summary. The bowl is a raked 3D view you can
+zoom and drag; open a block and it redraws flat, pitch-side down, with every
+seat individually placed and numbered and the row label at both ends. Seat
+counts are SMSA's; the *shape* is derived, because the schedule carries no
+survey coordinates — block width follows mean row width and depth follows
+row count, so drawn area tracks seats. The screen says as much.
+
 **History** ships with what this stadium is publicly recorded as having
 hosted: twenty events from Mandela's 1990 address to the 2019 Carling Cup,
 each carrying its source. These are press-and-almanac figures, not SMSA gate

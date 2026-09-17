@@ -497,6 +497,54 @@
   th.sortable[aria-sort='ascending'], th.sortable[aria-sort='descending'] { color: var(--brand); }
   .caret { display: inline-block; margin-left: 4px; font-size: 8px; opacity: .85; }
 
+  /* ------------- seat map ------------- */
+
+  .mapWrap {
+    position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow);
+  }
+  .mapSvg { display: block; width: 100%; height: 560px; cursor: grab; touch-action: none; }
+  .mapSvg.dragging { cursor: grabbing; }
+  @media (max-width: 900px) { .mapSvg { height: 420px; } }
+
+  .mapDeck { stroke: var(--panel); stroke-width: 1.2; transition: filter .08s; }
+  .mapDeck:hover { filter: brightness(1.12); }
+  .mapDeck[aria-current='true'] { stroke: var(--brand); stroke-width: 2.4; }
+  .mapLabel {
+    font-family: var(--mono); font-size: 7px; font-weight: 600;
+    fill: var(--text); pointer-events: none; paint-order: stroke;
+    stroke: var(--panel); stroke-width: 2.4px; stroke-linejoin: round;
+  }
+
+  .mapBar {
+    position: absolute; top: 10px; left: 10px; right: 10px;
+    display: flex; gap: 7px; align-items: center; flex-wrap: wrap; pointer-events: none;
+  }
+  .mapBar > * { pointer-events: auto; }
+  .mapZoom { margin-left: auto; display: flex; gap: 4px; }
+  .mapZoom .btn { min-width: 28px; justify-content: center; }
+
+  .mapTip {
+    position: absolute; pointer-events: none; z-index: 5;
+    background: var(--bar); color: #f2f3f5; padding: 6px 10px;
+    border-radius: var(--r); font-size: 11.5px; line-height: 1.45;
+    box-shadow: var(--shadow-lg); max-width: 220px;
+  }
+  .mapTip b { display: block; font-size: 12.5px; }
+  .mapTip span { color: var(--bar-dim); font-family: var(--mono); font-size: 10px; }
+
+  .rampKey { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+  .rampBar { display: flex; height: 9px; border-radius: 2px; overflow: hidden; width: 104px; }
+  .rampBar i { flex: 1; }
+
+  .seat { stroke: var(--panel); stroke-width: 0.35; }
+  .seat:hover { stroke: var(--brand); stroke-width: 1.2; }
+  .seatNum { font-family: var(--mono); font-size: 2px; pointer-events: none; text-anchor: middle; }
+  .rowTag {
+    font-family: var(--mono); font-size: 5px; font-weight: 700;
+    fill: var(--muted); pointer-events: none; dominant-baseline: middle;
+  }
+
   /* ------------- responsive ------------- */
 
   @media (max-width: 900px) {
@@ -1303,6 +1351,77 @@
   }
 
   /* ==================================================================
+   * Level 1 seating manifest.
+   *
+   * Straight from SMSA's own sticker schedule for blocks 101-150 — every
+   * row label and the seat count on it, 1 815 rows and 32 624 seats. Each
+   * block sheet reconciles exactly with the summary sheet, so this is the
+   * building as recorded, not an estimate.
+   *
+   * Per block: [total seats, [[row label, seats on that row], ...]],
+   * ordered back row first, front row (nearest the pitch) last.
+   * ================================================================ */
+
+  const LEVEL1 = {
+    101: [397, [["LL",16],["KK",16],["JJ",16],["HH",16],["GG",16],["FF",16],["EE",16],["DD",16],["CC",16],["BB",16],["AA",16],["Z",16],["Y",16],["X",16],["W",16],["V",16],["U",9],["T",9],["S",9],["R",9],["Q",9],["P",9],["N",9],["M",9],["L",9],["K",9],["J",9],["H",9],["G",8],["E",5],["D",5],["C",5],["B",5],["A",5]]],
+    102: [542, [["LL",16],["KK",16],["JJ",16],["HH",16],["GG",16],["FF",16],["EE",16],["DD",16],["CC",16],["BB",16],["AA",16],["Z",16],["Y",16],["X",16],["W",16],["V",16],["U",16],["T",15],["S",15],["R",15],["Q",15],["P",15],["N",15],["M",15],["L",15],["K",15],["J",15],["H",15],["G",15],["F",15],["E",15],["D",15],["C",15],["B",15],["A",15]]],
+    103: [577, [["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    104: [610, [["PP",10],["NN",12],["MM",13],["LL",15],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    105: [620, [["PP",18],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",15],["H",15],["G",15],["F",15],["E",15],["D",15],["C",15],["B",15],["A",15]]],
+    106: [1008, [["PP",33],["NN",32],["MM",32],["LL",32],["KK",31],["JJ",31],["HH",31],["GG",30],["FF",30],["EE",30],["DD",29],["CC",29],["BB",29],["AA",28],["Z",28],["Y",28],["X",27],["W",27],["V",27],["U",26],["T",26],["S",26],["R",25],["Q",25],["P",25],["N",24],["M",24],["L",24],["K",23],["J",23],["H",23],["G",22],["F",22],["E",22],["D",21],["C",21],["B",21],["A",21]]],
+    107: [667, [["PP",30],["NN",29],["MM",29],["LL",28],["KK",26],["JJ",26],["HH",26],["GG",25],["FF",24],["EE",23],["DD",23],["CC",22],["BB",21],["AA",20],["Z",20],["Y",19],["X",18],["W",17],["V",19],["U",18],["T",17],["S",17],["R",16],["Q",16],["P",15],["N",14],["M",13],["L",13],["K",12],["J",11],["H",10],["G",10],["F",9],["E",8],["D",8],["C",7],["B",5],["A",3]]],
+    108: [63, [["PP",9],["NN",9],["MM",9],["LL",9],["KK",9],["JJ",9],["HH",9]]],
+    109: [673, [["PP",30],["NN",30],["MM",29],["LL",28],["KK",28],["JJ",27],["HH",26],["GG",25],["FF",25],["EE",24],["DD",23],["CC",23],["BB",22],["AA",21],["Z",20],["Y",19],["X",18],["W",18],["V",19],["U",19],["T",18],["S",17],["R",17],["Q",16],["P",15],["N",14],["M",14],["L",13],["K",12],["J",12],["H",11],["G",10],["F",9],["E",8],["D",6],["C",5],["B",2]]],
+    110: [1007, [["PP",33],["NN",32],["MM",32],["LL",32],["KK",31],["JJ",31],["HH",31],["GG",30],["FF",30],["EE",30],["DD",29],["CC",29],["BB",29],["AA",28],["Z",28],["Y",28],["X",27],["W",27],["V",27],["U",26],["T",26],["S",26],["R",25],["Q",25],["P",25],["N",24],["M",24],["L",24],["K",23],["J",23],["H",23],["G",22],["F",22],["E",22],["D",21],["C",21],["B",21],["A",20]]],
+    111: [631, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    112: [631, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    113: [631, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    114: [631, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    115: [631, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    116: [631, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    117: [1001, [["PP",33],["NN",32],["MM",32],["LL",32],["KK",31],["JJ",31],["HH",31],["GG",30],["FF",30],["EE",30],["DD",29],["CC",29],["BB",29],["AA",28],["Z",28],["Y",28],["X",27],["W",27],["V",27],["U",26],["T",26],["S",26],["R",25],["Q",25],["P",25],["N",24],["M",24],["L",24],["K",23],["J",22],["H",22],["G",22],["F",21],["E",21],["D",21],["C",20],["B",20],["A",20]]],
+    118: [654, [["PP",31],["NN",30],["MM",29],["LL",28],["KK",27],["JJ",27],["HH",26],["GG",25],["FF",24],["EE",23],["DD",23],["CC",22],["BB",21],["AA",20],["Z",20],["Y",19],["X",18],["W",17],["V",18],["U",18],["T",17],["S",17],["R",16],["Q",15],["P",14],["N",13],["M",13],["L",12],["K",11],["J",10],["H",9],["G",9],["F",8],["E",7],["D",6],["C",5],["B",4],["A",2]]],
+    119: [98, [["PP",14],["NN",14],["MM",14],["LL",14],["KK",14],["JJ",14],["HH",14]]],
+    120: [432, [["PP",23],["NN",22],["MM",21],["LL",21],["KK",20],["JJ",19],["HH",19],["GG",18],["FF",17],["EE",17],["DD",16],["CC",15],["BB",15],["AA",14],["Z",13],["Y",13],["X",12],["W",11],["V",13],["U",12],["T",11],["S",11],["R",10],["Q",9],["P",9],["N",8],["M",7],["L",7],["K",6],["J",5],["H",5],["G",4],["F",3],["E",3],["D",2],["C",1]]],
+    121: [994, [["PP",33],["NN",32],["MM",32],["LL",31],["KK",31],["JJ",31],["HH",30],["GG",30],["FF",30],["EE",29],["DD",29],["CC",29],["BB",28],["AA",28],["Z",28],["Y",27],["X",27],["W",27],["V",26],["U",26],["T",26],["S",25],["R",25],["Q",25],["P",24],["N",24],["M",24],["L",23],["K",23],["J",23],["H",22],["G",22],["F",22],["E",21],["D",21],["C",20],["B",20],["A",20]]],
+    122: [626, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",16],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    123: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    124: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    125: [628, [["PP",18],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    126: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    127: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    128: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    129: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    130: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    131: [627, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",16],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    132: [1021, [["PP",33],["NN",33],["MM",32],["LL",32],["KK",32],["JJ",31],["HH",31],["GG",31],["FF",30],["EE",30],["DD",30],["CC",29],["BB",29],["AA",29],["Z",28],["Y",28],["X",28],["W",27],["V",27],["U",27],["T",26],["S",26],["R",26],["Q",25],["P",25],["N",25],["M",24],["L",24],["K",24],["J",23],["H",23],["G",23],["F",22],["E",22],["D",22],["C",22],["B",21],["A",21]]],
+    133: [463, [["PP",22],["NN",22],["MM",21],["LL",21],["KK",20],["JJ",20],["HH",19],["GG",19],["FF",18],["EE",17],["DD",17],["CC",16],["BB",16],["AA",15],["Z",14],["Y",14],["X",13],["W",13],["V",12],["U",11],["T",11],["S",10],["R",10],["Q",9],["P",8],["N",8],["M",7],["L",7],["K",8],["J",8],["H",7],["G",6],["F",6],["E",5],["D",4],["C",4],["B",3],["A",2]]],
+    134: [883, [["PP",38],["NN",37],["MM",36],["LL",36],["KK",35],["JJ",34],["HH",33],["GG",33],["FF",32],["EE",32],["DD",31],["CC",30],["BB",29],["AA",28],["Z",26],["Y",25],["X",25],["W",24],["V",23],["U",23],["T",22],["S",21],["R",20],["Q",19],["P",18],["N",17],["M",16],["L",15],["K",17],["J",16],["H",15],["G",14],["F",13],["E",12],["D",11],["C",10],["B",9],["A",8]]],
+    135: [1007, [["PP",33],["NN",32],["MM",32],["LL",32],["KK",31],["JJ",31],["HH",31],["GG",30],["FF",30],["EE",30],["DD",29],["CC",29],["BB",29],["AA",28],["Z",28],["Y",28],["X",27],["W",27],["V",27],["U",26],["T",26],["S",26],["R",25],["Q",25],["P",25],["N",24],["M",24],["L",24],["K",23],["J",23],["H",23],["G",22],["F",22],["E",22],["D",21],["C",21],["B",21],["A",20]]],
+    136: [632, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",17],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    137: [632, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",17],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    138: [632, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",17],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    139: [632, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",17],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    140: [632, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",17],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    141: [632, [["PP",18],["NN",18],["MM",18],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",17],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    142: [1007, [["PP",33],["NN",32],["MM",32],["LL",32],["KK",31],["JJ",31],["HH",31],["GG",30],["FF",30],["EE",30],["DD",29],["CC",29],["BB",29],["AA",28],["Z",28],["Y",28],["X",27],["W",27],["V",27],["U",26],["T",26],["S",26],["R",25],["Q",25],["P",25],["N",24],["M",24],["L",24],["K",23],["J",23],["H",23],["G",22],["F",22],["E",22],["D",21],["C",21],["B",21],["A",20]]],
+    143: [834, [["PP",38],["NN",36],["MM",36],["LL",33],["KK",34],["JJ",33],["HH",32],["GG",31],["FF",30],["EE",29],["DD",29],["CC",28],["BB",27],["AA",27],["Z",25],["Y",25],["X",23],["W",23],["V",22],["U",21],["T",20],["S",20],["R",19],["Q",18],["P",17],["N",16],["M",15],["L",14],["K",15],["J",14],["H",14],["G",13],["F",12],["E",11],["D",10],["C",9],["B",8],["A",7]]],
+    144: [467, [["PP",23],["NN",22],["MM",21],["LL",21],["KK",20],["JJ",19],["HH",19],["GG",18],["FF",18],["EE",17],["DD",17],["CC",16],["BB",16],["AA",15],["Z",14],["Y",14],["X",13],["W",13],["V",12],["U",11],["T",11],["S",10],["R",10],["Q",9],["P",9],["N",8],["M",7],["L",7],["K",8],["J",8],["H",7],["G",7],["F",6],["E",5],["D",5],["C",4],["B",4],["A",3]]],
+    145: [1003, [["PP",32],["NN",32],["MM",32],["LL",32],["KK",31],["JJ",31],["HH",31],["GG",30],["FF",30],["EE",30],["DD",29],["CC",29],["BB",29],["AA",28],["Z",28],["Y",28],["X",27],["W",27],["V",26],["U",26],["T",26],["S",25],["R",25],["Q",25],["P",24],["N",24],["M",24],["L",24],["K",23],["J",23],["H",23],["G",22],["F",22],["E",22],["D",21],["C",21],["B",21],["A",20]]],
+    146: [628, [["PP",17],["NN",17],["MM",17],["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    147: [610, [["PP",10],["NN",12],["MM",13],["LL",15],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    148: [577, [["LL",17],["KK",17],["JJ",17],["HH",17],["GG",17],["FF",17],["EE",17],["DD",17],["CC",17],["BB",17],["AA",17],["Z",17],["Y",17],["X",17],["W",17],["V",17],["U",17],["T",16],["S",16],["R",16],["Q",16],["P",16],["N",16],["M",16],["L",16],["K",16],["J",16],["H",16],["G",16],["F",16],["E",16],["D",16],["C",16],["B",16],["A",16]]],
+    149: [542, [["LL",16],["KK",16],["JJ",16],["HH",16],["GG",16],["FF",16],["EE",16],["DD",16],["CC",16],["BB",16],["AA",16],["Z",16],["Y",16],["X",16],["W",16],["V",16],["U",16],["T",15],["S",15],["R",15],["Q",15],["P",15],["N",15],["M",15],["L",15],["K",15],["J",15],["H",15],["G",15],["F",15],["E",15],["D",15],["C",15],["B",15],["A",15]]],
+    150: [391, [["LL",16],["KK",16],["JJ",16],["HH",16],["GG",16],["FF",16],["EE",16],["DD",16],["CC",16],["BB",15],["AA",15],["Z",15],["Y",15],["X",15],["W",15],["V",15],["U",9],["T",9],["S",9],["R",9],["Q",9],["P",9],["N",9],["M",9],["L",9],["K",9],["J",9],["H",9],["G",9],["E",5],["D",5],["C",5],["B",5],["A",5]]],
+  };
+
+  const LEVEL1_SOURCE = 'SMSA Level 1 general-seating sticker schedule';
+
+  /* Seat 1's side, straight off the schedule. Worth printing on screen:
+   * get it backwards and a steward walks the wrong end of the row. */
+  const SEAT_ONE = 'Seat 1 is on the LEFT looking from the field';
+
+  /* ==================================================================
    * The public record.
    *
    * What FNB Stadium has actually hosted, from published sources. This is
@@ -1452,6 +1571,77 @@
     }
     toast(made + ' events added to the history');
     go('history');
+  }
+
+  /* ==================================================================
+   * Seat map geometry.
+   *
+   * SMSA's schedule gives seat counts, not survey coordinates, so the
+   * bowl is DERIVED from the manifest rather than measured: a block's
+   * angular width follows its mean row width and its depth follows its
+   * row count, which makes drawn area track seat count. Blocks 101-150
+   * run clockwise from twelve o'clock, as they do on the ticketing map.
+   *
+   * The result is true to the seating figures and to the running order.
+   * It is not a survey drawing, and the screen says so.
+   * ================================================================ */
+
+  const BLOCK_IDS = Object.keys(LEVEL1).map(Number).sort((a, b) => a - b);
+
+  function blockStats(b) {
+    const [seats, rows] = LEVEL1[b];
+    let widest = 0;
+    for (const [, q] of rows) if (q > widest) widest = q;
+    return { block: b, seats, rows, rowCount: rows.length, mean: seats / rows.length, widest };
+  }
+
+  const R0 = 152;          // front row, a fixed distance off the pitch
+  const ROW_DEPTH = 2.35;  // radial units per row of seats
+  const RISE = 1.15;       // how much each row climbs — the rake
+  const SQUASH = 0.58;     // viewing angle: 1 is plan view, 0 is side on
+  const THICK = 7;         // the deck's apparent thickness
+
+  const MAP = (() => {
+    const all = BLOCK_IDS.map(blockStats);
+    const totalMean = all.reduce((s, x) => s + x.mean, 0);
+    const GAP = 0.0055;    // the aisle between two blocks, in radians
+    const out = {};
+    let a = -Math.PI / 2;
+    for (const x of all) {
+      const span = (x.mean / totalMean) * Math.PI * 2;
+      out[x.block] = { ...x, a0: a + GAP, a1: a + span - GAP, mid: a + span / 2 };
+      a += span;
+    }
+    return out;
+  })();
+
+  const proj = (angle, radius, h) => [
+    radius * Math.cos(angle),
+    radius * Math.sin(angle) * SQUASH - h,
+  ];
+
+  /* Sequential ramp — one hue, light to dark, lightness monotonic in even
+   * steps. Dark mode gets its own steps against the dark surface rather
+   * than an inverted copy of the light ones. The lightest steps sit under
+   * 3:1 on the surface, so every block is directly labelled and the whole
+   * level is also listed as a table: colour is never the only encoding. */
+  const RAMP_LIGHT = ['#c9ddf4', '#93c0ec', '#5c9ce0', '#2a78d6', '#1b5aa6'];
+  const RAMP_DARK = ['#1b3c5e', '#24578c', '#2f74bd', '#3f8ce8', '#74b2f2'];
+  const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+  const ramp = () => (isDark() ? RAMP_DARK : RAMP_LIGHT);
+
+  /* Seat numerals against the ramp step under them. The light ramp runs
+   * light to dark and the dark ramp runs dark to light, so the rule
+   * inverts with the mode; both directions clear 4.4:1 at every step. */
+  const seatInk = (band) => (isDark()
+    ? (band >= 3 ? '#12233a' : '#ffffff')
+    : (band >= 3 ? '#ffffff' : '#12233a'));
+
+  const SEAT_BANDS = [200, 450, 700, 900];   // seats per block, band edges
+  function bandOf(seats) {
+    let i = 0;
+    while (i < SEAT_BANDS.length && seats > SEAT_BANDS[i]) i++;
+    return i;
   }
 
   /* ==================================================================
@@ -2029,6 +2219,411 @@
     return el('div', null,
       el('dl', { class: 'dl' }, rows.map(([k, val]) => [el('dt', null, k), el('dd', null, val)])),
       v.notes ? el('div', { class: 'notice info', style: 'margin-top:13px' }, v.notes) : null);
+  }
+
+  /* ---------- seat map ---------- */
+
+  let mapCam = null;          // {x, y, k} — set on first paint, kept across renders
+  let mapPick = null;         // the block under the pointer
+  let seatBlock = null;       // the block opened to seat level
+  let seatHit = null;         // 'ROW/SEAT' under the pointer
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  function pts(list) {
+    return list.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' ');
+  }
+
+  /** The deck's top face, sampled along both arcs so the curve is smooth. */
+  function deckFace(g, steps = 7) {
+    const rOut = R0 + g.rowCount * ROW_DEPTH;
+    const hOut = g.rowCount * RISE;
+    const out = [];
+    for (let i = 0; i <= steps; i++) {
+      const a = g.a0 + (g.a1 - g.a0) * (i / steps);
+      out.push(proj(a, R0, 0));
+    }
+    for (let i = steps; i >= 0; i--) {
+      const a = g.a0 + (g.a1 - g.a0) * (i / steps);
+      out.push(proj(a, rOut, hOut));
+    }
+    return out;
+  }
+
+  function drawBowl() {
+    const cols = ramp();
+    const svg = svgEl('svg', {
+      class: 'mapSvg', viewBox: '-258 -198 516 356',
+      preserveAspectRatio: 'xMidYMid meet',
+      role: 'img', 'aria-label': 'Level 1 seating bowl, blocks 101 to 150',
+    });
+    const scene = svgEl('g', null);
+    svg.append(scene);
+
+    // The pitch, flattened by the same viewing angle as everything else.
+    scene.append(svgEl('ellipse', {
+      cx: 0, cy: 0, rx: R0 - 16, ry: (R0 - 16) * SQUASH,
+      fill: 'var(--viz-track)', stroke: 'var(--line-strong)', 'stroke-width': 1,
+    }));
+    scene.append(svgEl('rect', {
+      x: -96, y: -62 * SQUASH * 1.05, width: 192, height: 124 * SQUASH * 1.05,
+      rx: 3, fill: '#1f7a45', opacity: 0.88,
+    }));
+    scene.append(svgEl('text', {
+      x: 0, y: 4, 'text-anchor': 'middle', fill: '#eaf3ec',
+      'font-size': 9, 'font-family': 'Archivo, sans-serif', 'font-weight': 700,
+      'letter-spacing': '1.5',
+    }, 'PITCH'));
+
+    // Painter's algorithm: the far side of the bowl is drawn first, so the
+    // near side overlaps it the way it would in the building.
+    const order = BLOCK_IDS.slice().sort((a, b) => Math.sin(MAP[a].mid) - Math.sin(MAP[b].mid));
+
+    for (const b of order) {
+      const g = MAP[b];
+      const face = deckFace(g);
+      const colour = cols[bandOf(g.seats)];
+
+      // Thickness: the same face dropped straight down, in shadow.
+      scene.append(svgEl('polygon', {
+        points: pts(face.map(([x, y]) => [x, y + THICK])),
+        fill: colour, opacity: 0.42, 'pointer-events': 'none',
+      }));
+
+      const deck = svgEl('polygon', {
+        class: 'mapDeck', points: pts(face), fill: colour,
+        'aria-current': seatBlock === b, tabindex: 0, role: 'button',
+        'aria-label': 'Block ' + b + ', ' + g.seats + ' seats',
+      });
+      deck.addEventListener('pointerenter', (e) => { mapPick = b; moveTip(e); });
+      deck.addEventListener('pointermove', moveTip);
+      deck.addEventListener('pointerleave', () => { mapPick = null; hideTip(); });
+      deck.addEventListener('click', () => { seatBlock = b; render(); });
+      deck.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); seatBlock = b; render(); }
+      });
+      scene.append(deck);
+
+      // Every block is directly labelled, so identity never rests on the
+      // fill alone — which the lightest steps of the ramp could not carry.
+      const [lx, ly] = proj(g.mid, R0 + (g.rowCount * ROW_DEPTH) / 2, (g.rowCount * RISE) / 2);
+      scene.append(svgEl('text', { class: 'mapLabel', x: lx, y: ly + 2, 'text-anchor': 'middle' }, String(b)));
+    }
+
+    return { svg, scene };
+  }
+
+  /** The block, flat and face-on: the way you read a seat map when you are
+   *  actually looking for a seat. Pitch at the bottom, back row at the top. */
+  function drawBlock(b) {
+    const g = MAP[b];
+    const cols = ramp();
+    const band = bandOf(g.seats);
+    const colour = cols[band];
+    const ink = seatInk(band);
+    const rows = g.rows;                       // back row first in the schedule
+    const front = rows.slice().reverse();      // draw front row first
+
+    const SEAT_W = 3.1, SEAT_GAP = 0.5, ROW_H = 4.6, ROW_GAP = 1.4;
+    const widest = g.widest * (SEAT_W + SEAT_GAP);
+    const height = front.length * (ROW_H + ROW_GAP);
+    const padX = 26, padY = 18;
+
+    const svg = svgEl('svg', {
+      class: 'mapSvg', role: 'img',
+      viewBox: [-widest / 2 - padX, -padY, widest + padX * 2, height + padY * 2].join(' '),
+      preserveAspectRatio: 'xMidYMid meet',
+      'aria-label': 'Block ' + b + ', ' + g.seats + ' seats in ' + g.rowCount + ' rows',
+    });
+    const scene = svgEl('g', null);
+    svg.append(scene);
+
+    front.forEach(([label, qty], i) => {
+      // Front row at the bottom, each row above the last.
+      const y = height - (i + 1) * (ROW_H + ROW_GAP);
+      const rowW = qty * (SEAT_W + SEAT_GAP) - SEAT_GAP;
+      const x0 = -rowW / 2;
+
+      scene.append(svgEl('text', { class: 'rowTag', x: x0 - 7, y: y + ROW_H / 2, 'text-anchor': 'end' }, label));
+      scene.append(svgEl('text', { class: 'rowTag', x: x0 + rowW + 7, y: y + ROW_H / 2 }, label));
+
+      for (let s = 1; s <= qty; s++) {
+        const x = x0 + (s - 1) * (SEAT_W + SEAT_GAP);
+        const id = label + '/' + s;
+        const seat = svgEl('rect', {
+          class: 'seat', x, y, width: SEAT_W, height: ROW_H, rx: 0.8,
+          fill: seatHit === id ? 'var(--brand)' : colour,
+        });
+        seat.addEventListener('pointerenter', (e) => { seatHit = id; moveTip(e); });
+        seat.addEventListener('pointermove', moveTip);
+        seat.addEventListener('pointerleave', () => { seatHit = null; hideTip(); });
+        scene.append(seat);
+        scene.append(svgEl('text', {
+          class: 'seatNum', x: x + SEAT_W / 2, y: y + ROW_H / 2 + 0.9, fill: ink,
+        }, String(s)));
+      }
+    });
+
+    // The pitch edge, so which end is the front is never in doubt.
+    scene.append(svgEl('line', {
+      x1: -widest / 2, y1: height + 6, x2: widest / 2, y2: height + 6,
+      stroke: '#1f7a45', 'stroke-width': 1.6,
+    }));
+    scene.append(svgEl('text', {
+      x: 0, y: height + 14, 'text-anchor': 'middle', fill: '#1f7a45',
+      'font-size': 5, 'font-family': 'Archivo, sans-serif', 'font-weight': 700,
+      'letter-spacing': '1',
+    }, 'PITCH'));
+
+    return { svg, scene };
+  }
+
+  /* ---- tooltip + camera, shared by both drawings ---- */
+
+  function tipNode() {
+    let n = document.getElementById('mapTip');
+    if (!n) {
+      n = el('div', { class: 'mapTip', id: 'mapTip', hidden: true });
+      const wrap = document.querySelector('.mapWrap');
+      if (wrap) wrap.append(n);
+    }
+    return n;
+  }
+
+  function hideTip() {
+    const n = document.getElementById('mapTip');
+    if (n) n.hidden = true;
+  }
+
+  function moveTip(e) {
+    const n = tipNode();
+    const wrap = document.querySelector('.mapWrap');
+    if (!n || !wrap) return;
+
+    if (seatBlock && seatHit) {
+      const [row, seat] = seatHit.split('/');
+      n.replaceChildren(
+        el('b', null, 'Block ' + seatBlock + ' · Row ' + row + ' · Seat ' + seat),
+        el('span', null, SEAT_ONE));
+    } else if (mapPick) {
+      const g = MAP[mapPick];
+      n.replaceChildren(
+        el('b', null, 'Block ' + mapPick),
+        el('span', null, numFmt(g.seats) + ' seats · ' + g.rowCount + ' rows · '
+          + g.rows[g.rows.length - 1][0] + ' to ' + g.rows[0][0]));
+    } else { n.hidden = true; return; }
+
+    const box = wrap.getBoundingClientRect();
+    n.hidden = false;
+    const x = Math.min(box.width - n.offsetWidth - 8, Math.max(8, e.clientX - box.left + 14));
+    const y = Math.max(8, e.clientY - box.top - n.offsetHeight - 10);
+    n.style.left = x + 'px';
+    n.style.top = y + 'px';
+  }
+
+  /** Wheel to zoom about the pointer, drag to pan. The camera lives outside
+   *  the render so redrawing does not throw away where someone was looking. */
+  function wireCamera(svg, scene, key) {
+    if (!mapCam || mapCam.key !== key) mapCam = { key, x: 0, y: 0, k: 1 };
+    const apply = () => scene.setAttribute('transform',
+      'translate(' + mapCam.x + ',' + mapCam.y + ') scale(' + mapCam.k + ')');
+    apply();
+
+    svg.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const box = svg.getBoundingClientRect();
+      const vb = svg.viewBox.baseVal;
+      // Pointer position in the scene's own units, so zoom holds it still.
+      const px = vb.x + ((e.clientX - box.left) / box.width) * vb.width;
+      const py = vb.y + ((e.clientY - box.top) / box.height) * vb.height;
+      const next = Math.min(9, Math.max(0.6, mapCam.k * (e.deltaY < 0 ? 1.13 : 1 / 1.13)));
+      mapCam.x = px - ((px - mapCam.x) / mapCam.k) * next;
+      mapCam.y = py - ((py - mapCam.y) / mapCam.k) * next;
+      mapCam.k = next;
+      apply();
+      hideTip();
+    }, { passive: false });
+
+    let from = null;
+    svg.addEventListener('pointerdown', (e) => {
+      from = { x: e.clientX, y: e.clientY, cx: mapCam.x, cy: mapCam.y };
+      svg.classList.add('dragging');
+      svg.setPointerCapture(e.pointerId);
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!from) return;
+      const box = svg.getBoundingClientRect();
+      const vb = svg.viewBox.baseVal;
+      mapCam.x = from.cx + (e.clientX - from.x) * (vb.width / box.width);
+      mapCam.y = from.cy + (e.clientY - from.y) * (vb.height / box.height);
+      apply();
+    });
+    const drop = (e) => {
+      from = null;
+      svg.classList.remove('dragging');
+      try { svg.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+    };
+    svg.addEventListener('pointerup', drop);
+    svg.addEventListener('pointercancel', drop);
+
+    return { zoom: (f) => { mapCam.k = Math.min(9, Math.max(0.6, mapCam.k * f)); apply(); },
+             reset: () => { mapCam.x = 0; mapCam.y = 0; mapCam.k = 1; apply(); } };
+  }
+
+  function rampKey() {
+    const cols = ramp();
+    return el('div', { class: 'rampKey' },
+      el('span', null, 'Fewer seats'),
+      el('div', { class: 'rampBar' }, cols.map((c) => el('i', { style: 'background:' + c }))),
+      el('span', null, 'More'));
+  }
+
+  function seatMapSpec(b) {
+    const g = MAP[b];
+    return {
+      title: 'Block ' + b + ' seating',
+      subtitle: 'FNB Stadium Level 1 · ' + numFmt(g.seats) + ' seats in ' + g.rowCount
+        + ' rows · ' + SEAT_ONE + ' · source: ' + LEVEL1_SOURCE + ' · generated ' + stamp(),
+      columns: [
+        { key: 'row', label: 'Row', get: (r) => r.label },
+        { key: 'seats', label: 'Seats on row', numeric: true, get: (r) => r.qty },
+        { key: 'first', label: 'First seat', numeric: true, get: () => 1 },
+        { key: 'last', label: 'Last seat', numeric: true, get: (r) => r.qty },
+      ],
+      rows: g.rows.map(([label, qty]) => ({ label, qty })),
+    };
+  }
+
+  function levelSpec() {
+    return {
+      title: 'Level 1 blocks',
+      subtitle: 'FNB Stadium · ' + BLOCK_IDS.length + ' blocks · '
+        + numFmt(BLOCK_IDS.reduce((s, b) => s + MAP[b].seats, 0)) + ' seats · source: '
+        + LEVEL1_SOURCE + ' · generated ' + stamp(),
+      columns: [
+        { key: 'block', label: 'Block', numeric: true, get: (r) => r.block },
+        { key: 'seats', label: 'Seats', numeric: true, get: (r) => r.seats },
+        { key: 'rows', label: 'Rows', numeric: true, get: (r) => r.rowCount },
+        { key: 'back', label: 'Back row', get: (r) => r.rows[0][0] },
+        { key: 'front', label: 'Front row', get: (r) => r.rows[r.rows.length - 1][0] },
+        { key: 'widest', label: 'Widest row', numeric: true, get: (r) => r.widest },
+        { key: 'mean', label: 'Mean seats per row', numeric: true, get: (r) => Math.round(r.mean) },
+      ],
+      rows: BLOCK_IDS.map((b) => MAP[b]),
+    };
+  }
+
+  function seatMapView() {
+    const v = venueById.get(venue);
+    const totalSeats = BLOCK_IDS.reduce((s, b) => s + MAP[b].seats, 0);
+    const totalRows = BLOCK_IDS.reduce((s, b) => s + MAP[b].rowCount, 0);
+    const biggest = BLOCK_IDS.slice().sort((a, b) => MAP[b].seats - MAP[a].seats)[0];
+    const smallest = BLOCK_IDS.slice().sort((a, b) => MAP[a].seats - MAP[b].seats)[0];
+    const open = seatBlock ? MAP[seatBlock] : null;
+
+    const out = [
+      head('Level 1 · ' + v.name, open ? 'Block ' + seatBlock : 'Seating bowl',
+        open
+          ? numFmt(open.seats) + ' seats across ' + open.rowCount + ' rows, '
+            + open.rows[open.rows.length - 1][0] + ' at the front to ' + open.rows[0][0]
+            + ' at the back. ' + SEAT_ONE + '. Scroll to zoom, drag to move.'
+          : 'Blocks 101 to 150 as recorded in SMSA’s seating schedule — '
+            + numFmt(totalSeats) + ' seats over ' + numFmt(totalRows)
+            + ' rows. Click a block to open it seat by seat.',
+        [
+          exportBar(() => (open ? seatMapSpec(seatBlock) : levelSpec())),
+          open ? el('button', { class: 'btn primary', onclick: () => { seatBlock = null; mapCam = null; render(); } }, 'Back to the bowl') : null,
+        ]),
+    ];
+
+    if (!open) {
+      out.push(el('div', { class: 'tiles' },
+        tile('Blocks', BLOCK_IDS.length, '101 to 150'),
+        tile('Seats', numFmt(totalSeats), 'every one on the schedule'),
+        tile('Rows', numFmt(totalRows), 'across the level'),
+        tile('Largest block', String(biggest), numFmt(MAP[biggest].seats) + ' seats'),
+        tile('Smallest block', String(smallest), numFmt(MAP[smallest].seats) + ' seats')));
+    }
+
+    const wrap = el('div', { class: 'mapWrap', style: 'margin-top:14px' });
+    const drawing = open ? drawBlock(seatBlock) : drawBowl();
+    wrap.append(drawing.svg);
+
+    const cam = wireCamera(drawing.svg, drawing.scene, open ? 'block-' + seatBlock : 'bowl');
+
+    wrap.append(el('div', { class: 'mapBar' },
+      open ? null : rampKey(),
+      el('div', { class: 'mapZoom' },
+        el('button', { class: 'btn sm', onclick: () => cam.zoom(1.3), title: 'Zoom in' }, '+'),
+        el('button', { class: 'btn sm', onclick: () => cam.zoom(1 / 1.3), title: 'Zoom out' }, '−'),
+        el('button', { class: 'btn sm', onclick: cam.reset }, 'Fit'))));
+    out.push(wrap);
+
+    out.push(el('div', { class: 'notice info', style: 'margin-top:12px' },
+      el('strong', null, 'Seat counts are SMSA’s; the shape is derived. '),
+      'Every row label and seat count comes from the Level 1 sticker schedule and reconciles '
+      + 'exactly with its summary. The schedule carries no survey coordinates, so each block’s '
+      + 'width follows its mean row width and its depth follows its row count — drawn area '
+      + 'tracks seats, and the running order matches the ticketing map. Use it to find a seat, '
+      + 'not to measure the building.'));
+
+    if (open) {
+      out.push(el('div', { class: 'sectionTitle' }, 'Rows in block ' + seatBlock));
+      out.push(el('div', { class: 'panel' }, el('div', { class: 'tw' },
+        el('table', null,
+          el('thead', null, el('tr', null,
+            el('th', null, 'Row'), el('th', { class: 'num' }, 'Seats'),
+            el('th', null, 'Numbering'), el('th', { class: 'num' }, 'Running total'))),
+          el('tbody', null, (() => {
+            let run = 0;
+            return open.rows.map(([label, qty]) => {
+              run += qty;
+              return el('tr', null,
+                el('td', null, el('span', { class: 'code strong' }, label)),
+                el('td', { class: 'num' }, qty),
+                el('td', null, tiny('1 – ' + qty)),
+                el('td', { class: 'num' }, numFmt(run)));
+            });
+          })())))));
+      return out;
+    }
+
+    out.push(el('div', { class: 'sectionTitle' }, 'Every block'));
+    const term = search.trim().toLowerCase();
+    const listed = BLOCK_IDS.filter((b) => !term || String(b).includes(term));
+    out.push(el('div', { class: 'toolbar' },
+      el('input', {
+        class: 'search', type: 'search', id: 'search-seatmap',
+        placeholder: 'Jump to a block…', value: search,
+        oninput: (e) => { search = e.target.value; paint(); },
+      }),
+      el('span', { class: 'count' },
+        listed.length === BLOCK_IDS.length ? BLOCK_IDS.length + ' blocks' : listed.length + ' of ' + BLOCK_IDS.length)));
+
+    out.push(el('div', { class: 'panel' }, el('div', { class: 'tw' },
+      el('table', null,
+        el('thead', null, el('tr', null,
+          el('th', null, 'Block'), el('th', { class: 'num' }, 'Seats'), el('th', { class: 'num' }, 'Rows'),
+          el('th', null, 'Front → back'), el('th', { class: 'num' }, 'Widest row'),
+          el('th', { class: 'num' }, 'Mean per row'), el('th', null, ''))),
+        el('tbody', null, listed.length === 0
+          ? el('tr', null, el('td', { colspan: 7 },
+              el('div', { class: 'muted', style: 'padding:20px;text-align:center' }, 'No block matches “' + search + '”.')))
+          : listed.map((b) => {
+              const g = MAP[b];
+              return el('tr', null,
+                el('td', null, el('span', { class: 'code strong' }, String(b))),
+                el('td', { class: 'num' }, numFmt(g.seats)),
+                el('td', { class: 'num' }, g.rowCount),
+                el('td', null, tiny(g.rows[g.rows.length - 1][0] + ' → ' + g.rows[0][0])),
+                el('td', { class: 'num' }, g.widest),
+                el('td', { class: 'num' }, Math.round(g.mean)),
+                el('td', { class: 'tight' },
+                  el('div', { class: 'rowBtns' },
+                    el('button', { class: 'btn sm', onclick: () => { seatBlock = b; mapCam = null; search = ''; render(); } }, 'Open'))));
+            }))))));
+
+    return out;
   }
 
   /* ---------- history ---------- */
@@ -2609,6 +3204,7 @@
    * ================================================================ */
 
   function go(next) {
+    if (next !== 'seatmap') { seatBlock = null; mapCam = null; }
     if (next === 'history' || next === 'events') lastList = next;
     view = next;
     editing = null;
@@ -2650,6 +3246,7 @@
     document.getElementById('navTop').replaceChildren(
       navBtn('dashboard', 'Dashboard'),
       navBtn('venues', 'Venue'),
+      navBtn('seatmap', 'Seat map', BLOCK_IDS.length),
       navBtn('history', 'History', pastEvents().length || null));
 
     document.getElementById('navRecords').replaceChildren(
@@ -2675,6 +3272,7 @@
 
     const content = view === 'dashboard' ? dashboard()
       : view === 'venues' ? venuesView()
+      : view === 'seatmap' ? seatMapView()
       : view === 'history' ? historyView()
       : view.startsWith('event:') ? eventView(view.slice(6))
       : recordsView(view);
