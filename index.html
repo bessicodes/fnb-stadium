@@ -490,6 +490,13 @@
 
   .detailGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 
+  /* ------------- sortable headers ------------- */
+
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th.sortable[aria-sort='ascending'], th.sortable[aria-sort='descending'] { color: var(--brand); }
+  .caret { display: inline-block; margin-left: 4px; font-size: 8px; opacity: .85; }
+
   /* ------------- responsive ------------- */
 
   @media (max-width: 900px) {
@@ -798,6 +805,36 @@
 
   const SECTIONS = Object.keys(SCHEMA);
 
+  /* Which field each on-screen column sorts by, aligned to the column
+   * order above. `null` marks a column computed from several fields —
+   * a fill bar, a margin — which has no single field to sort on. */
+  const SORT_KEYS = {
+    events: ['name', 'kind', 'date', 'attendance', 'status'],
+    vendors: ['name', 'category', 'status', null, 'commission', 'contact'],
+    kiosks: ['code', 'name', 'level', 'area', 'kind', 'tills', 'status'],
+    storage: ['code', 'name', 'level', 'klass', null, 'bays', null, 'security'],
+    crews: ['callSign', 'name', 'base', 'members', 'trolleys', 'status'],
+    stock: ['sku', 'name', 'category', 'pack', 'cost', 'price', null, 'chill'],
+  };
+
+  /** Numbers compare as numbers, everything else as text, and blanks
+   *  always sink to the bottom whichever way the column is pointing —
+   *  a column of empty cells at the top is nobody's idea of sorted. */
+  function compareBy(key, dir) {
+    return (a, b) => {
+      const x = a[key];
+      const y = b[key];
+      const xBlank = x == null || x === '';
+      const yBlank = y == null || y === '';
+      if (xBlank && yBlank) return 0;
+      if (xBlank) return 1;
+      if (yBlank) return -1;
+      const both = typeof x === 'number' && typeof y === 'number';
+      const n = both ? x - y : String(x).localeCompare(String(y), 'en', { numeric: true });
+      return dir === 'desc' ? -n : n;
+    };
+  }
+
   const EVENT_TONE = { planned: 'neutral', accreditation: 'info', load_in: 'warn', live: 'crit', closed: 'warn', reconciled: 'good' };
   const VENDOR_TONE = { prospect: 'info', approved: 'good', suspended: 'warn', blacklisted: 'crit' };
   const ROOM_TONE = { chilled: 'info', frozen: 'info', dry: 'neutral', beverage: 'good', gas: 'crit', merchandise: 'neutral', waste: 'neutral' };
@@ -818,6 +855,9 @@
   let search = '';
   let assist = { busy: false, text: '', question: '' };
   let lastList = 'events';
+  /* Per-section sort, so switching away and back does not lose the order
+   * someone chose. `null` means the section's own default. */
+  const sorting = {};
   let toastTimer = null;
   const subs = [];
 
@@ -1260,6 +1300,158 @@
       };
     }
     render();
+  }
+
+  /* ==================================================================
+   * The public record.
+   *
+   * What FNB Stadium has actually hosted, from published sources. This is
+   * the press-and-almanac account, NOT SMSA's gate receipts: the two will
+   * differ, sometimes by thousands, and where a figure is contested the
+   * record says so rather than picking a number and looking certain.
+   *
+   * Kick-off and start times are left blank unless the time itself is on
+   * the public record — three of them are. Inventing the other sixteen
+   * would put times into an operations system that no source supports,
+   * and an operator would have no way to tell which were real.
+   *
+   * Every row carries its source in `notes`, so any figure on screen can
+   * be traced and corrected against SMSA's own returns.
+   * ================================================================ */
+
+  const PUBLIC_RECORD = [
+    {
+      code: 'HIST-1990-01', name: 'Nelson Mandela\u2019s first address after release', kind: 'other',
+      date: '1990-02-13',
+      notes: 'Days after his release from Victor Verster. No reliable gate figure is published. Source: South African History Online.',
+    },
+    {
+      code: 'HIST-1993-01', name: 'Chris Hani memorial service', kind: 'other',
+      date: '1993-04-19',
+      notes: 'Widely reported as held here; confirm the date against SMSA\u2019s own records. No published gate figure. Source: South African History Online.',
+    },
+    {
+      code: 'AFCON-1996-FIN', name: 'Africa Cup of Nations final \u2014 South Africa 2\u20130 Tunisia', kind: 'football',
+      date: '1996-02-03', attendance: 80000,
+      notes: 'South Africa\u2019s first continental title, with Mandela and De Klerk present. Attendance 80 000. Source: 1996 African Cup of Nations final.',
+    },
+    {
+      code: 'WC-2010-OPN', name: 'FIFA World Cup opening match \u2014 South Africa 1\u20131 Mexico', kind: 'football',
+      date: '2010-06-11', start: '16:00', attendance: 84490,
+      notes: 'First World Cup match played on African soil. Capacity was held at 84 490 for the tournament, press and VIP seating taking the rest. Some reports round to 84 000.',
+    },
+    {
+      code: 'WC-2010-FIN', name: 'FIFA World Cup final \u2014 Netherlands 0\u20131 Spain', kind: 'football',
+      date: '2010-07-11', start: '20:30', attendance: 84490,
+      notes: 'Iniesta\u2019s extra-time winner. Attendance 84 490, the tournament ceiling for this ground.',
+    },
+    {
+      code: 'RUG-2010-NZ', name: 'Tri Nations test \u2014 South Africa 22\u201329 New Zealand', kind: 'rugby',
+      date: '2010-08-21', attendance: 94713,
+      notes: 'First rugby test at the ground and John Smit\u2019s 100th cap. 94 713 remains a record for a rugby match in South Africa in the professional era.',
+    },
+    {
+      code: 'CON-2011-U2', name: 'U2 \u2014 360\u00b0 Tour', kind: 'concert',
+      date: '2011-02-13', attendance: 94232,
+      notes: 'The first concert ever staged at the stadium. Reported at 94 232, a sell-out on the configuration used.',
+    },
+    {
+      code: 'CON-2011-CP', name: 'Coldplay \u2014 Mylo Xyloto Tour', kind: 'concert',
+      date: '2011-10-08',
+      notes: 'The band\u2019s first South African show. No gate figure published.',
+    },
+    {
+      code: 'CON-2012-LG', name: 'Lady Gaga \u2014 Born This Way Ball', kind: 'concert',
+      date: '2012-11-30',
+      notes: 'No gate figure published.',
+    },
+    {
+      code: 'HIST-2013-01', name: 'Nelson Mandela national memorial service', kind: 'other',
+      date: '2013-12-10', start: '11:00', attendance: 90000,
+      notes: 'Over 90 heads of state attended. Estimates range from about 70 000 to a near-full house \u2014 90 000 is the mid-point and is an estimate, not a gate count.',
+    },
+    {
+      code: 'CON-2015-1D1', name: 'One Direction \u2014 On the Road Again (night one)', kind: 'concert',
+      date: '2015-03-28', attendance: 55000,
+      notes: 'Reported as a 55 000 sell-out on the configuration used.',
+    },
+    {
+      code: 'CON-2015-1D2', name: 'One Direction \u2014 On the Road Again (night two)', kind: 'concert',
+      date: '2015-03-29',
+      notes: 'Second of two nights. No separate gate figure published.',
+    },
+    {
+      code: 'CBL-2015', name: 'Carling Black Label Cup \u2014 Kaizer Chiefs v Orlando Pirates', kind: 'football',
+      date: '2015-08-01', attendance: 94807,
+      notes: 'The ground record: 94 807, the largest crowd ever recorded here.',
+    },
+    {
+      code: 'CBL-2016', name: 'Carling Black Label Cup \u2014 Kaizer Chiefs v Orlando Pirates', kind: 'football',
+      date: '2016-07-30',
+      notes: 'No gate figure published for this edition.',
+    },
+    {
+      code: 'CBL-2017', name: 'Carling Black Label Cup \u2014 Kaizer Chiefs v Orlando Pirates', kind: 'football',
+      date: '2017-07-29',
+      notes: 'No gate figure published for this edition.',
+    },
+    {
+      code: 'CON-2017-CN', name: 'Cassper Nyovest \u2014 Fill Up FNB Stadium', kind: 'concert',
+      date: '2017-12-02', attendance: 68000,
+      notes: 'First South African artist to headline the ground solo. Reported at 68 000.',
+    },
+    {
+      code: 'CON-2018-GC', name: 'Global Citizen Festival: Mandela 100', kind: 'concert',
+      date: '2018-12-02', attendance: 94000,
+      notes: 'Beyonc\u00e9, JAY-Z, Ed Sheeran, Usher and others, marking Mandela\u2019s centenary. Reported as \u201cnearly 100 000\u201d; 94 000 is the venue ceiling and is an estimate.',
+    },
+    {
+      code: 'CON-2019-ES1', name: 'Ed Sheeran \u2014 \u00f7 Tour (night one)', kind: 'concert',
+      date: '2019-03-23',
+      notes: 'Two nights here, part of a four-date run that set a South African touring record. No per-night gate published.',
+    },
+    {
+      code: 'CON-2019-ES2', name: 'Ed Sheeran \u2014 \u00f7 Tour (night two)', kind: 'concert',
+      date: '2019-03-24',
+      notes: 'Second of two nights. No per-night gate published.',
+    },
+    {
+      code: 'CBL-2019', name: 'Carling Black Label Cup \u2014 Kaizer Chiefs v Orlando Pirates', kind: 'football',
+      date: '2019-07-27',
+      notes: 'No gate figure published for this edition.',
+    },
+  ];
+
+  async function loadPublicRecord() {
+    const v = venueById.get(venue);
+    const have = new Set(forVenue('events').map((e) => e.code).filter(Boolean));
+    const fresh = PUBLIC_RECORD.filter((e) => !have.has(e.code));
+
+    if (!fresh.length) {
+      toast('The public record is already loaded.');
+      return;
+    }
+
+    const withGate = fresh.filter((e) => e.attendance).length;
+    const ok = window.confirm(
+      'Load ' + fresh.length + ' events from the public record of ' + v.name + '?\n\n'
+      + withGate + ' carry a published attendance figure; the rest have none on record.\n'
+      + 'Only three have a published start time, so the others are left blank rather than invented.\n\n'
+      + 'These are press and almanac figures, not SMSA gate receipts \u2014 a starting point to '
+      + 'reconcile against your own returns. Each one carries its source in its notes.'
+      + (have.size ? '\n\nEvents already on record are skipped, so nothing is duplicated.' : ''),
+    );
+    if (!ok) return;
+
+    toast('Loading ' + fresh.length + ' events\u2026');
+    let made = 0;
+    for (const e of fresh) {
+      const res = await saveRecord('events', null, { ...e, status: 'closed' });
+      if (!res.ok) { toast(res.error); return; }
+      made++;
+    }
+    toast(made + ' events added to the history');
+    go('history');
   }
 
   /* ==================================================================
@@ -1918,7 +2110,10 @@
     const out = [
       head('Records \u00b7 ' + v.name, 'Event history',
         'Every event that has already run, with its gate figures and what it filled. Search by name, reference, type or year; open one for the full record.',
-        all.length ? exportBar(() => historySpec(rows, all)) : null),
+        [
+          all.length ? exportBar(() => historySpec(rows, all)) : null,
+          el('button', { class: 'btn ghost', onclick: loadPublicRecord }, 'Load public record'),
+        ]),
     ];
 
     if (all.length === 0) {
@@ -1926,8 +2121,11 @@
         el('div', { class: 'emptyTitle' }, 'No past events on record'),
         el('div', { class: 'emptyBody' },
           'Events move here on their own once their date has passed, or as soon as you mark one closed or reconciled. '
-          + 'To bring previous seasons in, add them under Events with their real dates \u2014 they will land here, grouped by year, with the totals worked out.'),
-        el('button', { class: 'btn primary', onclick: () => go('events') }, 'Go to events')));
+          + 'You can enter previous seasons under Events, or load what this stadium is publicly recorded as having hosted \u2014 '
+          + 'twenty events from 1990 to 2019, each carrying its source, to reconcile against SMSA\u2019s own returns.'),
+        el('div', { style: 'display:flex;gap:7px;justify-content:center;flex-wrap:wrap' },
+          el('button', { class: 'btn primary', onclick: loadPublicRecord }, 'Load the public record'),
+          el('button', { class: 'btn', onclick: () => go('events') }, 'Enter one by hand'))));
       return out;
     }
 
@@ -1967,7 +2165,64 @@
           label: a.year,
           sub: a.events.length + (a.events.length === 1 ? ' event' : ' events'),
           value: a.gate,
-          display: numFmt(a.gate),
+          // A year whose events have no published gate is unknown, not
+          // zero. Printing 0 beside three events says nobody came.
+          display: a.gate ? numFmt(a.gate) : 'not published',
+        }))))));
+    }
+
+    // Which kinds of event actually fill the bowl. A concert that sells
+    // 55 000 and a derby that sells 94 000 are different businesses, and
+    // averaging them together hides that.
+    const byKind = new Map();
+    for (const e of withGate) {
+      const k = e.kind || 'other';
+      const agg = byKind.get(k) || { kind: k, n: 0, gate: 0, best: 0 };
+      agg.n++;
+      agg.gate += Number(e.attendance);
+      agg.best = Math.max(agg.best, Number(e.attendance));
+      byKind.set(k, agg);
+    }
+    const kindRows = [...byKind.values()].sort((a, b) => (b.gate / b.n) - (a.gate / a.n));
+
+    if (kindRows.length > 1) {
+      out.push(el('div', { class: 'sectionTitle' }, 'How each kind of event fills the bowl'));
+      out.push(el('div', { class: 'panel' }, el('div', { class: 'panelBody' },
+        barChart(kindRows.map((a) => {
+          const avg = Math.round(a.gate / a.n);
+          return {
+            label: optLabel('events', 'kind', a.kind),
+            sub: a.n + (a.n === 1 ? ' event' : ' events') + ' \u00b7 best ' + numFmt(a.best),
+            value: avg,
+            display: numFmt(avg) + ' \u00b7 ' + Math.round((avg / v.capacity) * 100) + '%',
+            colour: 'var(--viz-2)',
+          };
+        })),
+        el('div', { class: 'legend' },
+          el('span', null, 'Bar length is the average crowd; the percentage is that against ' + numFmt(v.capacity) + ' seats.')))));
+    }
+
+    // Which days actually sell. Useful when a promoter asks for a Tuesday.
+    const byDay = new Map();
+    for (const e of all) {
+      const d = dayName(e.date);
+      if (!d) continue;
+      const agg = byDay.get(d) || { day: d, n: 0, gate: 0, gated: 0 };
+      agg.n++;
+      if (Number(e.attendance) > 0) { agg.gate += Number(e.attendance); agg.gated++; }
+      byDay.set(d, agg);
+    }
+    const dayRows = [...byDay.values()].sort((a, b) => b.n - a.n);
+
+    if (dayRows.length > 1) {
+      out.push(el('div', { class: 'sectionTitle' }, 'Which days this ground runs on'));
+      out.push(el('div', { class: 'panel' }, el('div', { class: 'panelBody' },
+        barChart(dayRows.map((a) => ({
+          label: a.day,
+          sub: a.gated ? 'average ' + numFmt(Math.round(a.gate / a.gated)) : 'no gate figures',
+          value: a.n,
+          display: a.n + (a.n === 1 ? ' event' : ' events'),
+          colour: 'var(--viz-3)',
         }))))));
     }
 
@@ -2086,6 +2341,7 @@
         [
           exportBar(() => eventSpec(e)),
           el('button', { class: 'btn ghost', onclick: () => go(past ? 'history' : 'events') }, 'Back'),
+          el('button', { class: 'btn ghost', onclick: () => cloneEvent(e) }, 'Book again'),
           el('button', { class: 'btn primary', onclick: () => { view = 'events'; openForm('events', e); } }, 'Edit'),
         ]),
 
@@ -2110,11 +2366,49 @@
     ];
   }
 
+  /**
+   * Book a past fixture again.
+   *
+   * Annual events are most of this ground's calendar, and re-typing a
+   * derby's gates, kick-off and running time every July is how a wrong
+   * time reaches a crew. This carries the shape forward and clears what
+   * must not be inherited: the reference, the gate figure, and the stage.
+   */
+  function cloneEvent(e) {
+    const next = { ...e };
+    delete next.id;
+    delete next.code;
+    delete next.attendance;
+    delete next.updatedAt;
+    delete next.createdAt;
+
+    // Roll forward to the next time this date comes round, not to the year
+    // after whichever one you happened to open. Cloning the 2015 derby
+    // should offer next season, not a date eleven years gone.
+    if (next.date) {
+      const d = new Date(next.date + 'T12:00:00');
+      if (!Number.isNaN(d.getTime())) {
+        const now = new Date();
+        do { d.setFullYear(d.getFullYear() + 1); } while (d <= now);
+        next.date = d.toISOString().slice(0, 10);
+      }
+    }
+    next.status = 'planned';
+
+    view = 'events';
+    lastList = 'events';
+    search = '';
+    editing = { section: 'events', id: null, values: next, errors: {} };
+    render();
+    toast('Same event, a year on \u2014 check the date and give it a reference.');
+  }
+
   /* ---------- records ---------- */
 
   function recordsView(sec) {
     const def = SCHEMA[sec];
-    const all = forVenue(sec).sort(def.sort);
+    const order = sorting[sec];
+    const all = forVenue(sec).sort(order ? compareBy(order.key, order.dir) : def.sort);
     const term = search.trim().toLowerCase();
     const rows = term ? all.filter((r) => def.search(r).toLowerCase().includes(term)) : all;
     const v = venueById.get(venue);
@@ -2124,6 +2418,9 @@
         [
           (sec === 'kiosks' || sec === 'storage' || sec === 'crews') && all.length === 0
             ? el('button', { class: 'btn ghost', onclick: loadStarter }, 'Build starter layout')
+            : null,
+          sec === 'events'
+            ? el('button', { class: 'btn ghost', onclick: loadPublicRecord }, 'Load public record')
             : null,
           el('button', { class: 'btn primary', onclick: () => openForm(sec, null) }, 'New ' + def.singular.toLowerCase()),
         ]),
@@ -2139,6 +2436,9 @@
           el('button', { class: 'btn primary', onclick: () => openForm(sec, null) }, 'Add the first ' + def.singular.toLowerCase()),
           (sec === 'kiosks' || sec === 'storage' || sec === 'crews')
             ? el('button', { class: 'btn', onclick: loadStarter }, 'Build a starter layout instead')
+            : null,
+          sec === 'events'
+            ? el('button', { class: 'btn', onclick: loadPublicRecord }, 'Load this stadium\u2019s public record')
             : null)));
       return out;
     }
@@ -2162,7 +2462,23 @@
         }))));
 
       const header = el('tr', null,
-        def.columns.map((c) => el('th', { class: c.class === 'num' ? 'num' : null }, c.label)),
+        def.columns.map((c, i) => {
+          const key = (SORT_KEYS[sec] || [])[i];
+          if (!key) return el('th', { class: c.class === 'num' ? 'num' : null }, c.label);
+          const active = order && order.key === key;
+          return el('th', {
+            class: (c.class === 'num' ? 'num ' : '') + 'sortable',
+            'aria-sort': active ? (order.dir === 'asc' ? 'ascending' : 'descending') : 'none',
+            title: 'Sort by ' + c.label.toLowerCase(),
+            onclick: () => {
+              // Ascending, then descending, then back to the section's own order.
+              if (!active) sorting[sec] = { key, dir: 'asc' };
+              else if (order.dir === 'asc') sorting[sec] = { key, dir: 'desc' };
+              else delete sorting[sec];
+              paint();
+            },
+          }, c.label, active ? el('span', { class: 'caret' }, order.dir === 'asc' ? '\u25b2' : '\u25bc') : null);
+        }),
         el('th', null, ''));
 
       const body = rows.length === 0

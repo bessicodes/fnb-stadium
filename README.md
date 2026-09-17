@@ -23,8 +23,16 @@ Both run the same operational rules. They differ only in where records live.
 | Audit trail, ledger, reconciliation | — | yes |
 | Seeded demo data | no, starts empty | yes, a full season |
 
-Every list exports to Excel or PDF, and **History** collects events whose
-date has passed — grouped by year, with gate totals, average fill and the
+**History** ships with what this stadium is publicly recorded as having
+hosted: twenty events from Mandela's 1990 address to the 2019 Carling Cup,
+each carrying its source. These are press-and-almanac figures, not SMSA gate
+receipts, and the loader says so — they are a starting point to reconcile
+against the real returns, and where a figure is contested the record says
+that rather than picking a number and looking certain. Start times are blank
+unless the time itself is published; three of the twenty are.
+
+Every list exports to Excel or PDF, sorts by any column, and **History**
+collects events whose date has passed — grouped by year, with gate totals, average fill and the
 best-attended night, and a full record per event. An export carries what is
 on screen, filter included, and says so in its own subtitle.
 
